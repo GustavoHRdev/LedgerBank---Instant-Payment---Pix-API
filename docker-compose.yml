@@ -1,0 +1,83 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: ledgerbank-postgres
+    environment:
+      POSTGRES_USER: pixuser
+      POSTGRES_PASSWORD: pixpass
+      POSTGRES_DB: postgres
+      POSTGRES_MULTIPLE_DATABASES: account_db,payment_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pixuser -d account_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: ledgerbank-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: pixuser
+      RABBITMQ_DEFAULT_PASS: pixpass
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  account-service:
+    build:
+      context: ./account-service
+    container_name: ledgerbank-account-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/account_db
+      SPRING_DATASOURCE_USERNAME: pixuser
+      SPRING_DATASOURCE_PASSWORD: pixpass
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: pixuser
+      SPRING_RABBITMQ_PASSWORD: pixpass
+      SERVER_PORT: 8081
+    ports:
+      - "8081:8081"
+
+  payment-service:
+    build:
+      context: ./payment-service
+    container_name: ledgerbank-payment-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      account-service:
+        condition: service_started
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/payment_db
+      SPRING_DATASOURCE_USERNAME: pixuser
+      SPRING_DATASOURCE_PASSWORD: pixpass
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: pixuser
+      SPRING_RABBITMQ_PASSWORD: pixpass
+      SERVER_PORT: 8082
+    ports:
+      - "8082:8082"
+
+volumes:
+  postgres-data:
