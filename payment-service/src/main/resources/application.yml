@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: payment-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ledgerbank_payment}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        retry:
+          enabled: true
+          initial-interval: 1000ms
+          multiplier: 2
+          max-attempts: 3
+        default-requeue-rejected: false
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+app:
+  messaging:
+    pix-requested-exchange: pix.requested
+    pix-requested-queue: payment.pix.requested
+    pix-requested-routing-key: pix.transfer.requested
+    pix-requested-dlx: pix.requested.dlx
+    pix-requested-dlq: payment.pix.requested.dlq
+    pix-requested-dlq-routing-key: pix.transfer.requested.dlq
+    consumer-name: payment-service
+server:
+  port: ${SERVER_PORT:8082}
