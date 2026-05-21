@@ -10,12 +10,11 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.Network;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.containers.RabbitMQContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.images.builder.ImageFromDockerfile;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import javax.sql.DataSource;
 import java.nio.file.Path;
@@ -25,28 +24,30 @@ import java.sql.Statement;
 import java.time.Duration;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public abstract class BaseIntegrationTest {
 
-    @Container
+    static final Network network = Network.newNetwork();
+
     static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16")
+            .withNetwork(network)
+            .withNetworkAliases("postgres-test")
             .withDatabaseName("account_db")
             .withUsername("pixuser")
             .withPassword("pixpass");
 
-    @Container
     static final RabbitMQContainer rabbitmq = new RabbitMQContainer("rabbitmq:3.13-management")
-            .withUser("pixuser", "pixpass");
+            .withNetwork(network)
+            .withNetworkAliases("rabbitmq-test")
+            .withAdminUser("pixuser")
+            .withAdminPassword("pixpass");
 
-    @Container
     static final GenericContainer<?> paymentService;
 
     static {
         postgres.start();
         rabbitmq.start();
         createDatabase("payment_db");
-        org.testcontainers.Testcontainers.exposeHostPorts(postgres.getMappedPort(5432), rabbitmq.getMappedPort(5672));
 
         Path paymentServiceRoot = Path.of("..", "payment-service").toAbsolutePath().normalize();
         ImageFromDockerfile paymentServiceImage = new ImageFromDockerfile("ledgerbank-payment-service-test", false)
@@ -55,17 +56,17 @@ public abstract class BaseIntegrationTest {
                 .withFileFromPath("src", paymentServiceRoot.resolve("src"));
 
         paymentService = new GenericContainer<>(paymentServiceImage)
-                .withAccessToHost(true)
+                .withNetwork(network)
                 .withExposedPorts(8082)
-                .withEnv("DB_HOST", "host.testcontainers.internal")
-                .withEnv("DB_PORT", String.valueOf(postgres.getMappedPort(5432)))
+                .withEnv("DB_HOST", "postgres-test")
+                .withEnv("DB_PORT", "5432")
                 .withEnv("DB_NAME", "payment_db")
                 .withEnv("DB_USERNAME", postgres.getUsername())
                 .withEnv("DB_PASSWORD", postgres.getPassword())
-                .withEnv("RABBITMQ_HOST", "host.testcontainers.internal")
-                .withEnv("RABBITMQ_PORT", String.valueOf(rabbitmq.getAmqpPort()))
-                .withEnv("RABBITMQ_USERNAME", "pixuser")
-                .withEnv("RABBITMQ_PASSWORD", "pixpass")
+                .withEnv("RABBITMQ_HOST", "rabbitmq-test")
+                .withEnv("RABBITMQ_PORT", "5672")
+                .withEnv("RABBITMQ_USERNAME", rabbitmq.getAdminUsername())
+                .withEnv("RABBITMQ_PASSWORD", rabbitmq.getAdminPassword())
                 .waitingFor(Wait.forLogMessage(".*Started PaymentServiceApplication.*", 1)
                         .withStartupTimeout(Duration.ofMinutes(4)));
 
@@ -91,8 +92,8 @@ public abstract class BaseIntegrationTest {
         registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.rabbitmq.host", rabbitmq::getHost);
         registry.add("spring.rabbitmq.port", rabbitmq::getAmqpPort);
-        registry.add("spring.rabbitmq.username", () -> "pixuser");
-        registry.add("spring.rabbitmq.password", () -> "pixpass");
+        registry.add("spring.rabbitmq.username", rabbitmq::getAdminUsername);
+        registry.add("spring.rabbitmq.password", rabbitmq::getAdminPassword);
     }
 
     @Autowired
