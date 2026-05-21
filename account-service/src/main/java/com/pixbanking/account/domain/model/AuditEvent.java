@@ -1,21 +1,19 @@
-package com.pixbanking.payment.domain.model;
+package com.pixbanking.account.domain.model;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
-import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.UUID;
 
 @Entity
-@Table(name = "outbox_events")
-public class OutboxEvent {
+@Table(name = "audit_events")
+public class AuditEvent {
 
     @Id
     private UUID id;
@@ -32,63 +30,34 @@ public class OutboxEvent {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String payload;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private OutboxEventStatus status;
-
     @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt;
+    private OffsetDateTime createdAt;
 
-    @Column(name = "published_at")
-    private Instant publishedAt;
-
-    protected OutboxEvent() {
+    protected AuditEvent() {
     }
 
-    public static OutboxEvent of(
+    public static AuditEvent of(
             String aggregateType,
             UUID aggregateId,
             String eventType,
             Map<String, Object> payload,
             ObjectMapper objectMapper
     ) {
-        OutboxEvent event = new OutboxEvent();
+        AuditEvent event = new AuditEvent();
         event.id = UUID.randomUUID();
         event.aggregateType = aggregateType;
         event.aggregateId = aggregateId;
         event.eventType = eventType;
         event.payload = toJson(payload, objectMapper);
-        event.status = OutboxEventStatus.PENDING;
-        event.createdAt = Instant.now();
+        event.createdAt = OffsetDateTime.now();
         return event;
-    }
-
-    public UUID getId() {
-        return id;
-    }
-
-    public String getEventType() {
-        return eventType;
-    }
-
-    public String getPayload() {
-        return payload;
-    }
-
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
-
-    public void markPublished() {
-        this.status = OutboxEventStatus.PUBLISHED;
-        this.publishedAt = Instant.now();
     }
 
     private static String toJson(Map<String, Object> payload, ObjectMapper objectMapper) {
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException e) {
-            throw new IllegalStateException("Could not serialize outbox payload", e);
+            throw new IllegalStateException("Could not serialize audit payload", e);
         }
     }
 }

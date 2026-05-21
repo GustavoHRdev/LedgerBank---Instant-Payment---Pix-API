@@ -43,6 +43,15 @@ public class TransferRequest {
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
+    @Column(name = "updated_at", nullable = false)
+    private OffsetDateTime updatedAt;
+
+    @Column(name = "completed_at")
+    private OffsetDateTime completedAt;
+
+    @Column(name = "failure_reason", length = 255)
+    private String failureReason;
+
     protected TransferRequest() {
     }
 
@@ -55,7 +64,10 @@ public class TransferRequest {
             TransferRequestStatus status,
             String idempotencyKey,
             String requestHash,
-            OffsetDateTime createdAt
+            OffsetDateTime createdAt,
+            OffsetDateTime updatedAt,
+            OffsetDateTime completedAt,
+            String failureReason
     ) {
         this.id = id;
         this.sourceAccountId = sourceAccountId;
@@ -66,6 +78,9 @@ public class TransferRequest {
         this.idempotencyKey = idempotencyKey;
         this.requestHash = requestHash;
         this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
+        this.completedAt = completedAt;
+        this.failureReason = failureReason;
     }
 
     public UUID getId() {
@@ -102,5 +117,30 @@ public class TransferRequest {
 
     public OffsetDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    public OffsetDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public OffsetDateTime getCompletedAt() {
+        return completedAt;
+    }
+
+    public String getFailureReason() {
+        return failureReason;
+    }
+
+    public void markCompleted(OffsetDateTime completedAt) {
+        this.status = TransferRequestStatus.COMPLETED;
+        this.updatedAt = completedAt;
+        this.completedAt = completedAt;
+        this.failureReason = null;
+    }
+
+    public void markFailed(String failureReason, OffsetDateTime failedAt) {
+        this.status = TransferRequestStatus.FAILED;
+        this.updatedAt = failedAt;
+        this.failureReason = failureReason;
     }
 }

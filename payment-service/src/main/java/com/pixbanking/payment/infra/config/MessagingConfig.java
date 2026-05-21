@@ -20,6 +20,11 @@ public class MessagingConfig {
     }
 
     @Bean
+    DirectExchange pixEventsExchange(MessagingProperties properties) {
+        return new DirectExchange(properties.pixEventsExchange(), true, false);
+    }
+
+    @Bean
     DirectExchange pixRequestedDlx(MessagingProperties properties) {
         return new DirectExchange(properties.pixRequestedDlx(), true, false);
     }

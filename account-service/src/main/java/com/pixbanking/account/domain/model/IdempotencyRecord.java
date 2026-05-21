@@ -74,4 +74,8 @@ public class IdempotencyRecord {
     public String getResponseBody() {
         return responseBody;
     }
+
+    public UUID getTransferRequestId() {
+        return transferRequestId;
+    }
 }

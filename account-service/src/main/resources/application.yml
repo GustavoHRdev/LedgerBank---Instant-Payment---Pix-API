@@ -2,14 +2,14 @@ spring:
   application:
     name: account-service
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ledgerbank_account}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:account_db}
+    username: ${DB_USERNAME:pixuser}
+    password: ${DB_PASSWORD:pixpass}
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
-    username: ${RABBITMQ_USERNAME:guest}
-    password: ${RABBITMQ_PASSWORD:guest}
+    username: ${RABBITMQ_USERNAME:pixuser}
+    password: ${RABBITMQ_PASSWORD:pixpass}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -24,6 +24,12 @@ app:
   messaging:
     pix-requested-exchange: pix.requested
     pix-requested-routing-key: pix.transfer.requested
+    pix-events-exchange: pix.events
+    transfer-completed-routing-key: transfer.completed
+    transfer-failed-routing-key: transfer.failed
+    completed-notification-queue: account.notification-sender.completed
+    failed-notification-queue: account.notification-sender.failed
+    notification-consumer-name: account.notification-sender
     outbox-publish-batch-size: 50
 server:
   port: ${SERVER_PORT:8081}

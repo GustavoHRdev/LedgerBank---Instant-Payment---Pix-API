@@ -7,9 +7,13 @@ public record MessagingProperties(
         String pixRequestedExchange,
         String pixRequestedQueue,
         String pixRequestedRoutingKey,
+        String pixEventsExchange,
+        String transferCompletedRoutingKey,
+        String transferFailedRoutingKey,
         String pixRequestedDlx,
         String pixRequestedDlq,
         String pixRequestedDlqRoutingKey,
-        String consumerName
+        String consumerName,
+        int outboxPublishBatchSize
 ) {
 }

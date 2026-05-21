@@ -83,13 +83,13 @@ public class TransferRequestService {
             if (!existingRecord.getRequestHash().equals(requestHash)) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Idempotency key already used with a different payload");
             }
-            return deserialize(existingRecord.getResponseBody());
+            TransferRequest existingTransfer = transferRequestRepository.findById(existingRecord.getTransferRequestId())
+                    .orElseThrow(() -> new IllegalStateException("Transfer linked to idempotency key was not found"));
+            return toResponse(existingTransfer);
         }
 
         UUID transferRequestId = UUID.randomUUID();
         OffsetDateTime now = OffsetDateTime.now();
-        TransferCreatedResponse response = new TransferCreatedResponse(transferRequestId, TransferRequestStatus.PENDING.name());
-
         TransferRequest transferRequest = new TransferRequest(
                 transferRequestId,
                 request.sourceAccountId(),
@@ -99,10 +99,15 @@ public class TransferRequestService {
                 TransferRequestStatus.PENDING,
                 idempotencyKey,
                 requestHash,
-                now
+                now,
+                now,
+                null,
+                null
         );
 
         transferRequestRepository.save(transferRequest);
+
+        TransferCreatedResponse response = toResponse(transferRequest);
 
         outboxEventRepository.save(new OutboxEvent(
                 UUID.randomUUID(),
@@ -137,6 +142,10 @@ public class TransferRequestService {
         return response;
     }
 
+    private TransferCreatedResponse toResponse(TransferRequest transferRequest) {
+        return new TransferCreatedResponse(transferRequest.getId(), transferRequest.getStatus().name());
+    }
+
     private void validateCurrency(String requestCurrency, String accountCurrency) {
         if (!accountCurrency.equals(requestCurrency)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Currency mismatch");
@@ -167,11 +176,4 @@ public class TransferRequestService {
         }
     }
 
-    private TransferCreatedResponse deserialize(String value) {
-        try {
-            return objectMapper.readValue(value, TransferCreatedResponse.class);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("Could not deserialize idempotent response", e);
-        }
-    }
 }

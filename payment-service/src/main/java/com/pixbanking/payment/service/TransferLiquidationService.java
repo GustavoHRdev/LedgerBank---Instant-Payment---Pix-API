@@ -98,7 +98,8 @@ public class TransferLiquidationService {
         );
         ledgerRepository.save(creditEntry);
 
-        transfer.markCompleted(Instant.now());
+        Instant completedAt = Instant.now();
+        transfer.markCompleted(completedAt);
         outboxEventRepository.save(OutboxEvent.of(
                 "TRANSFER",
                 event.transferRequestId(),
@@ -108,7 +109,8 @@ public class TransferLiquidationService {
                         "debitEntryId", debitEntry.getId(),
                         "creditEntryId", creditEntry.getId(),
                         "amount", amount.toPlainString(),
-                        "currency", event.currency()
+                        "currency", event.currency(),
+                        "completedAt", completedAt.toString()
                 ),
                 objectMapper
         ));
@@ -124,14 +126,16 @@ public class TransferLiquidationService {
 
     @Transactional
     public LiquidationResult failTransfer(TransferRequest transfer, String reason) {
-        transfer.markFailed(reason, Instant.now());
+        Instant failedAt = Instant.now();
+        transfer.markFailed(reason, failedAt);
         outboxEventRepository.save(OutboxEvent.of(
                 "TRANSFER",
                 transfer.getId(),
                 "PIX_TRANSFER_FAILED",
                 Map.of(
                         "transferId", transfer.getId(),
-                        "reason", reason
+                        "reason", reason,
+                        "failedAt", failedAt.toString()
                 ),
                 objectMapper
         ));
