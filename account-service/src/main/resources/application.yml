@@ -20,6 +20,12 @@ spring:
           time_zone: UTC
   flyway:
     enabled: true
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
 app:
   messaging:
     pix-requested-exchange: pix.requested
