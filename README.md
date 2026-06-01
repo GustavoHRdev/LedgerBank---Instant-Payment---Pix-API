@@ -254,6 +254,24 @@ curl -X POST http://localhost:8081/pix/transfers \
 
 ## Rodando os testes de integração
 
+> **Windows + Docker Desktop:** o Testcontainers precisa de configuração
+> adicional para encontrar o daemon. Antes de rodar `mvn test`, crie o
+> arquivo `account-service/src/test/resources/docker-java.properties`
+> com o conteúdo abaixo (já está no repositório):
+>
+> ```properties
+> api.version=1.44
+> ```
+>
+> E rode com a variável de ambiente:
+>
+> ```powershell
+> $env:DOCKER_HOST='npipe:////./pipe/dockerDesktopLinuxEngine'
+> mvn test
+> ```
+>
+> Linux e macOS não precisam dessa configuração.
+
 ```bash
 cd account-service
 mvn test
@@ -264,7 +282,7 @@ Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
 Total time: ~1m 18s
 ```
 
-Os testes sobem PostgreSQL e RabbitMQ reais via Testcontainers e exercitam o fluxo ponta a ponta incluindo o `payment-service` containerizado.
+Os testes sobem PostgreSQL, RabbitMQ **e o `payment-service`** reais via Testcontainers — fluxo E2E completo, sem mock de infraestrutura.
 
 ---
 
