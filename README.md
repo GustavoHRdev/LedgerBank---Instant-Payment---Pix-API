@@ -335,8 +335,12 @@ Painel de administração: `http://localhost:15672` (pixuser/pixpass)
 
 ## Próximas evoluções (fase 2)
 
-- `balance_snapshots` — performance de saldo em contas antigas
-- QR Code dinâmico com `fund_reservations` e expiração
-- Reconciliação — job que valida `SUM(ledger)` contra `running_balance`
-- Métricas com Micrometer + Grafana
-- `expires_at` em `processed_messages` + job de limpeza
+Roadmap detalhado: [`docs/ROADMAP.md`](docs/ROADMAP.md)
+
+| Melhoria | Objetivo | Impacto técnico |
+|---|---|---|
+| QR Code dinâmico com `fund_reservations` e expiração | Criar cobranças PIX temporárias com reserva de saldo antes da liquidação | Evita overbooking de saldo e aproxima o fluxo de cobrança do mundo real |
+| Reconciliação do ledger | Job que valida `SUM(ledger_entries.amount)` contra `running_balance` | Detecta divergências contábeis sem alterar dados automaticamente |
+| `expires_at` em `processed_messages` + job de limpeza | Controlar crescimento da tabela de mensagens processadas | Mantém idempotência dentro da janela de retenção sem crescimento infinito |
+| Métricas com Micrometer + Grafana | Expor throughput, falhas, latência e saúde dos workers | Dá visibilidade operacional para debugging e demonstração técnica |
+| `balance_snapshots` | Otimizar leitura de saldo em contas com histórico longo | Reduz custo de consulta sem abandonar ledger imutável |
