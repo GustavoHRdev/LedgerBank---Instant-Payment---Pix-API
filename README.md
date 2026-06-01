@@ -1,5 +1,7 @@
 # LedgerBank — Instant Payment PIX API
 
+[![CI](https://github.com/GustavoHRdev/LedgerBank---Instant-Payment---Pix-API/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/GustavoHRdev/LedgerBank---Instant-Payment---Pix-API/actions/workflows/ci.yml)
+
 Sistema bancário simplificado com transferências PIX assíncronas, modelagem financeira imutável e garantias de consistência distribuída.
 
 ---
@@ -170,6 +172,10 @@ Aguarda as linhas:
 account-service | Started AccountServiceApplication
 payment-service | Started PaymentServiceApplication
 ```
+
+Documentação interativa da API:
+- Swagger UI: `http://localhost:8081/swagger-ui.html`
+- OpenAPI JSON: `http://localhost:8081/api-docs`
 
 ---
 
