@@ -1,12 +1,14 @@
-#!/bin/bash
-set -e
+#!/bin/sh
+set -eu
 
-if [ -n "$POSTGRES_MULTIPLE_DATABASES" ]; then
-  IFS=',' read -ra DBS <<< "$POSTGRES_MULTIPLE_DATABASES"
-  for db in "${DBS[@]}"; do
+if [ -n "${POSTGRES_MULTIPLE_DATABASES:-}" ]; then
+  echo "$POSTGRES_MULTIPLE_DATABASES" | tr ',' '\n' | while IFS= read -r db; do
     db="$(echo "$db" | xargs)"
-    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<-EOSQL
-      CREATE DATABASE $db;
+
+    if [ -n "$db" ]; then
+      psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<-EOSQL
+        CREATE DATABASE "$db";
 EOSQL
+    fi
   done
 fi

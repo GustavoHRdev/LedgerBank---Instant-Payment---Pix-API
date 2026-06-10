@@ -167,6 +167,8 @@ cd "LedgerBank---Instant-Payment---Pix-API"
 docker compose up --build
 ```
 
+No Windows, os scripts `.sh` do diretório `docker/` são mantidos com line ending `LF` via `.gitattributes`. Isso evita erro de inicialização do PostgreSQL ao executar `docker/postgres/init-multiple-dbs.sh`.
+
 Aguarda as linhas:
 ```
 account-service | Started AccountServiceApplication
