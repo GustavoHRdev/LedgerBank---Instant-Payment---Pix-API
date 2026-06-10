@@ -179,6 +179,16 @@ Documentação interativa da API:
 - Swagger UI: `http://localhost:8081/swagger-ui.html`
 - OpenAPI JSON: `http://localhost:8081/api-docs`
 
+### Swagger UI
+
+Solicitação de transferência PIX:
+
+![Swagger UI - Solicitação PIX](docs/assets/swagger-transfer-request.png)
+
+Resposta `202 Accepted`:
+
+![Swagger UI - Resposta PIX](docs/assets/swagger-transfer-response.png)
+
 ---
 
 ## Testando o fluxo
