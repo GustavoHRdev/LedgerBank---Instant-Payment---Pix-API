@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/GustavoHRdev/LedgerBank---Instant-Payment---Pix-API/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/GustavoHRdev/LedgerBank---Instant-Payment---Pix-API/actions/workflows/ci.yml)
 
-Sistema bancário simplificado com transferências PIX assíncronas, modelagem financeira imutável e garantias de consistência distribuída.
+Sistema bancário simplificado com transferências PIX assíncronas, modelagem financeira imutável e mecanismos de consistência distribuída.
 
 ---
 
@@ -18,10 +18,12 @@ repository.save(account);
 Isso quebra em produção. Race conditions, saldo negativo indevido, dinheiro que some entre serviços.
 
 Este projeto foi construído para demonstrar como um sistema financeiro real funciona:
-- Saldo nunca é uma coluna — é calculado do ledger
-- Dinheiro nunca some entre serviços — Outbox Pattern garante entrega
-- O mesmo request nunca é processado duas vezes — idempotência real
+- O saldo não é armazenado na linha da conta; a liquidação registra lançamentos no ledger do Payment Service
+- O Outbox Pattern persiste a intenção de publicação junto com a operação de negócio e permite novas tentativas
+- Mensagens podem ser entregues novamente; o processamento idempotente protege os efeitos financeiros
 - Falhas são cidadãos de primeira classe — estados explícitos e DLQ
+
+O fluxo aceita redelivery e não promete entrega única. No Payment Service, a verificação de `message_id`, a restrição única em `processed_messages` e a liquidação na mesma transação protegem os efeitos financeiros contra processamento repetido.
 
 ---
 
@@ -54,7 +56,7 @@ Este projeto foi construído para demonstrar como um sistema financeiro real fun
                                         ┌─────────────────┐
                                         │    RabbitMQ     │
                                         │  pix.events     │
-                                        │  (topic)        │
+                                        │  (direct)       │
                                         └────────┬────────┘
                                                  │
                            ┌─────────────────────┼──────────────────────┐
@@ -81,20 +83,29 @@ Este projeto foi construído para demonstrar como um sistema financeiro real fun
 
 ## Decisões técnicas
 
-### Ledger imutável — por que não ter coluna `saldo`
+### Ledger da liquidação e saldo da conta
+
+`accounts` não armazena uma coluna de saldo. O Payment Service mantém o histórico financeiro em `payment_db.ledger_entries`, que inclui `running_balance` em cada lançamento. A leitura do saldo usa o último `running_balance`; se não houver lançamentos, o serviço calcula o saldo a partir dos tipos `CREDIT`, `DEBIT`, `REVERSAL_CREDIT` e `REVERSAL_DEBIT`.
+
+O Account Service possui outra tabela `ledger_entries` em `account_db`, com `transfer_request_id`, `currency` e sem `running_balance`. A tabela do Account Service não é onde o Payment Service grava os lançamentos da liquidação.
 
 ```sql
 -- ❌ O que a maioria faz
 UPDATE accounts SET saldo = saldo - 150.00 WHERE id = ?
 
--- ✅ O que este projeto faz
-INSERT INTO ledger_entries (account_id, entry_type, amount, running_balance)
-VALUES (?, 'DEBIT', 150.00, 850.00);
+-- ✅ Exemplo da tabela payment_db.ledger_entries
+INSERT INTO ledger_entries
+    (id, account_id, transfer_id, entry_type, amount, running_balance, created_at)
+VALUES
+    ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+     '11111111-1111-1111-1111-111111111111',
+     'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+     'DEBIT', 150.0000, 850.0000, now());
 ```
 
-Com coluna de saldo, duas transferências simultâneas leem `1000.00`, ambas subtraem `150.00`, ambas fazem `UPDATE saldo = 850.00`. Resultado: R$150 desapareceu.
+Com saldo mutável em `accounts`, duas transferências simultâneas poderiam ler `1000.00`, subtrair `150.00` e gravar ambas `850.00`. O Payment Service bloqueia a conta pagadora com `SELECT ... FOR UPDATE` durante o cálculo e a gravação dos lançamentos.
 
-Com ledger, saldo é `SUM` de todas as entradas. O `SELECT ... FOR UPDATE` garante que apenas uma transação por vez calcula e insere. Toda movimentação é rastreável desde o início da conta.
+O histórico do Payment Service registra valores positivos e o tipo do lançamento; o cálculo do saldo soma créditos e subtrai débitos. `running_balance` é um saldo acumulado persistido por lançamento, não uma coluna da tabela `accounts`.
 
 ### `BigDecimal` — por que não `double`
 
@@ -120,12 +131,14 @@ Em dinheiro, imprecisão não existe. No banco: `DECIMAL(19,4)`. Na API: `amount
   1. INSERT outbox_events }
   2. INSERT transfer_request } mesma transação — ou tudo ou nada
   3. @Scheduled lê outbox e publica na fila
-  resultado: banco e fila sempre sincronizados
+  resultado: a intenção de publicação fica persistida e pode ser tentada novamente
 ```
 
-### Idempotência — por que `idempotency_records` é tabela separada
+O envio ao RabbitMQ e a atualização do estado da Outbox não formam uma transação distribuída. Falhas podem deixar o evento pendente para retry ou causar publicação repetida; entrega depende também do publisher, do broker e da configuração operacional.
 
-Se a checagem e a criação da transferência fossem na mesma tabela, duas requisições simultâneas com a mesma key poderiam passar pela checagem antes de qualquer uma ter feito INSERT. Com tabela separada e `INSERT ... ON CONFLICT DO NOTHING`, a operação é atômica.
+### Idempotência da solicitação
+
+`idempotency_records` associa a chave, o hash do payload e a transferência criada. O serviço consulta a tabela antes de criar a transferência; a restrição única em `(account_id, idempotency_key)` impede registros duplicados. A implementação atual não usa `INSERT ... ON CONFLICT DO NOTHING`: duas primeiras solicitações concorrentes com a mesma chave podem disputar a restrição única, e o comportamento dessa corrida não está coberto por um teste de integração.
 
 ### Estados de transação
 
@@ -143,13 +156,13 @@ PENDING ──▶ PROCESSING ──▶ COMPLETED
 
 | Camada | Tecnologia | Por quê |
 |---|---|---|
-| Runtime | Java 21 + Virtual Threads | Project Loom — alta concorrência sem thread pool blocking |
+| Runtime | Java 21 | Versão usada pelos módulos e imagens Docker |
 | Framework | Spring Boot 3.5 | Ecossistema maduro, integração nativa com RabbitMQ e JPA |
 | Banco | PostgreSQL 16 | ACID real, `SELECT FOR UPDATE`, `DECIMAL(19,4)` |
-| Cache/Idem | Redis | Idempotência com TTL, sem poluir o banco principal |
-| Fila | RabbitMQ 3.13 | Topic exchange, DLQ nativa, management UI |
+| Idempotência | PostgreSQL | `idempotency_records` no `account_db` e `processed_messages` nos serviços |
+| Fila | RabbitMQ 3.13 | Direct exchanges, filas duráveis, DLQ e management UI |
 | Migrations | Flyway | Histórico versionado, sem surpresa entre ambientes |
-| Testes | Testcontainers + Awaitility | Postgres e RabbitMQ reais no teste, sem mock de infraestrutura |
+| Testes | Testcontainers + Awaitility | PostgreSQL e RabbitMQ em containers; recuperação também usa injeção de falha |
 | Container | Docker + Docker Compose | Stack completa com um comando |
 
 ---
@@ -272,10 +285,9 @@ curl -X POST http://localhost:8081/pix/transfers \
 
 ## Rodando os testes de integração
 
-> **Windows + Docker Desktop:** o Testcontainers precisa de configuração
-> adicional para encontrar o daemon. Antes de rodar `mvn test`, crie o
-> arquivo `account-service/src/test/resources/docker-java.properties`
-> com o conteúdo abaixo (já está no repositório):
+> **Windows + Docker Desktop:** os dois módulos incluem
+> `src/test/resources/docker-java.properties` com `api.version=1.44`.
+> Configure o endpoint do Docker Desktop antes de rodar os comandos abaixo:
 >
 > ```properties
 > api.version=1.44
@@ -285,22 +297,35 @@ curl -X POST http://localhost:8081/pix/transfers \
 >
 > ```powershell
 > $env:DOCKER_HOST='npipe:////./pipe/dockerDesktopLinuxEngine'
-> mvn test
+> mvn -f account-service/pom.xml test
+> mvn -f payment-service/pom.xml test
 > ```
 >
 > Linux e macOS não precisam dessa configuração.
 
+Execute ambos os comandos a partir da raiz do repositório; cada um roda a
+suíte do módulo indicado, como os dois passos do workflow de CI.
+
 ```bash
-cd account-service
-mvn test
+mvn -f account-service/pom.xml test
+mvn -f payment-service/pom.xml test
 ```
 
-```
-Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
-Total time: ~1m 18s
-```
+Resultados da execução local de `mvn test` em cada módulo, em 25 nov 2026:
 
-Os testes sobem PostgreSQL, RabbitMQ **e o `payment-service`** reais via Testcontainers — fluxo E2E completo, sem mock de infraestrutura.
+| Módulo | Resultado |
+|---|---|
+| `account-service` | 3 testes, 0 falhas, 0 erros, 0 ignorados |
+| `payment-service` | 4 testes, 0 falhas, 0 erros, 0 ignorados |
+
+Os testes de integração do Account Service sobem PostgreSQL, RabbitMQ e o `payment-service` em containers Testcontainers para exercitar o fluxo E2E de transferência.
+
+Os testes de integração do Payment Service utilizam PostgreSQL 16 e RabbitMQ via Testcontainers.
+
+- `ConcurrentMessageIdempotencyTest` valida duas chamadas concorrentes com o mesmo `message_id`; apenas uma persiste débito, crédito, evento de conclusão e registro em `processed_messages`.
+- `MessagingRecoveryTest` deixa uma mensagem na fila com o listener parado e depois o inicia; simula a janela após commit e antes do ACK usando `basicGet` sem confirmação, chama o orquestrador e fecha o canal para provocar redelivery; também injeta falha de conexão no `RabbitTemplate` para verificar a recuperação da publicação da Outbox.
+
+No cenário de indisponibilidade do broker, a exceção é injetada no cliente de publicação; o container RabbitMQ não é interrompido. Os resultados cobrem esses cenários específicos, não todos os modos de falha e recuperação possíveis.
 
 ---
 
@@ -352,7 +377,7 @@ Roadmap detalhado: [`docs/ROADMAP.md`](docs/ROADMAP.md)
 | Melhoria | Objetivo | Impacto técnico |
 |---|---|---|
 | QR Code dinâmico com `fund_reservations` e expiração | Criar cobranças PIX temporárias com reserva de saldo antes da liquidação | Evita overbooking de saldo e aproxima o fluxo de cobrança do mundo real |
-| Reconciliação do ledger | Job que valida `SUM(ledger_entries.amount)` contra `running_balance` | Detecta divergências contábeis sem alterar dados automaticamente |
+| Reconciliação do ledger em `payment_db` | Job que compara o saldo assinado por `entry_type` com o último `running_balance` | Detecta divergências contábeis sem alterar dados automaticamente |
 | `expires_at` em `processed_messages` + job de limpeza | Controlar crescimento da tabela de mensagens processadas | Mantém idempotência dentro da janela de retenção sem crescimento infinito |
 | Métricas com Micrometer + Grafana | Expor throughput, falhas, latência e saúde dos workers | Dá visibilidade operacional para debugging e demonstração técnica |
 | `balance_snapshots` | Otimizar leitura de saldo em contas com histórico longo | Reduz custo de consulta sem abandonar ledger imutável |

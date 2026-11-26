@@ -25,8 +25,8 @@ Critério de aceite:
 Objetivo: detectar inconsistências contábeis automaticamente.
 
 Escopo previsto:
-- Criar job que valida `SUM(ledger_entries.amount)` por conta.
-- Comparar o saldo calculado com o último `running_balance`.
+- Criar job para `payment_db` que soma créditos e subtrai débitos, considerando `entry_type` (`CREDIT`/`REVERSAL_CREDIT` e `DEBIT`/`REVERSAL_DEBIT`).
+- Comparar o saldo calculado com o último `running_balance` de cada conta.
 - Registrar divergências em tabela de auditoria ou log estruturado.
 - Expor métrica ou alerta para divergência encontrada.
 
